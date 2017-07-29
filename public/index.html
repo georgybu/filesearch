@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+<head>
+    <base href="/">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css"
+          integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.5/angular.min.js"
+            integrity="sha256-zBy1l2WBAh2vPF8rnjFMUXujsfkKjya0Jy5j6yKj0+Q=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.5/angular-route.min.js"
+            integrity="sha256-E6XubcgT4a601977ZZP4Yw/0UCB2/Ex+Bazst+JRw1U=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-recaptcha/4.1.0/angular-recaptcha.min.js"
+            integrity="sha256-pu0tCDQtmALCUwcXLIay2O6tQrF+JmXYDYXHtOm0Ceg=" crossorigin="anonymous"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+<div class="container" ng-view></div>
+
+<!-- Pages -->
+<script type="text/ng-template" id="index-page.html">
+    <app-index></app-index>
+</script>
+<script type="text/ng-template" id="details-page.html">
+    <app-details></app-details>
+</script>
+
+<!-- Components -->
+<script type="text/ng-template" id="index.html">
+    <h1>Search example</h1>
+    <form ng-submit="$ctrl.onSubmit()">
+        <fieldset ng-disabled="$ctrl.isLoading">
+            <div class="form-group row">
+                <div class="col">
+                    <input type="text" class="form-control" placeholder="type part of file name"
+                           ng-model="$ctrl.search">
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary" ng-disabled="!$ctrl.recaptcha || !$ctrl.search">
+                        <span ng-if="$ctrl.isLoading">Please, wait...</span>
+                        <span ng-if="!$ctrl.isLoading">Submit</span>
+                    </button>
+                </div>
+            </div>
+            <div vc-recaptcha key="'6Lc7-CoUAAAAAOGihZtfNHOTxxPaw_brhN0IHcgW'" ng-model="$ctrl.recaptcha"></div>
+            <pre ng-if="$ctrl.error">{{ $ctrl.error | json }}</pre>
+        </fieldset>
+    </form>
+    <div class="row">
+        <div class="col">
+            <hr/>
+            <h2>Previous searches:</h2>
+            <ul class="list-group">
+                <li class="list-group-item" ng-repeat="s in $ctrl.searches track by $index">
+                    <a href="/#/{{s.id}}">
+                        id: <strong>{{s.id}}</strong>,
+                        term: <strong>{{s.term}}</strong>,
+                        status: <strong>{{s.status}}</strong>
+                    </a>
+                </li>
+            </ul>
+            <br/>
+            <br/>
+        </div>
+    </div>
+</script>
+<script type="text/ng-template" id="details.html">
+    <h1>
+        Search #{{ $ctrl.$routeParams.requestId }}
+        <span class="float-right"><a href="/">Back</a></span>
+    </h1>
+    <h2>Term: <strong>{{ $ctrl.data.term }}</strong></h2>
+    <div class="row" ng-if="$ctrl.data.status === 'started'">
+        <div class="col">
+            Current find directory: {{ $ctrl.directory }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col">
+            <p>Files found: {{ $ctrl.data.result.length }}</p>
+            <ul class="list-group">
+                <li class="list-group-item" ng-repeat="file in $ctrl.data.result track by $index">{{ file }}</li>
+            </ul>
+        </div>
+    </div>
+</script>
+<script>
+    const socket = io('/');
+
+    class IndexController {
+        constructor($http, $location) {
+            this.$http = $http;
+            this.$location = $location;
+            this.search = '';
+            this.recaptcha = null;
+            this.error = null;
+            this.isLoading = false;
+            this.searches = null;
+        }
+
+        $onInit() {
+            this.$http.get('/requests').then((response) => {
+                this.searches = response.data;
+            });
+        }
+
+        onSubmit() {
+            this.isLoading = true;
+            this.$http.post('/search', {search: this.search, recaptcha: this.recaptcha}).then(
+                (result) => {
+                    this.search = '';
+                    this.isLoading = false;
+                    this.$location.path(`/${result.data.id}`);
+                },
+                (error) => {
+                    this.isLoading = false;
+                    this.error = error;
+                }
+            );
+        }
+    }
+
+    class DetailsController {
+        constructor($scope, $routeParams, $http) {
+            this.$routeParams = $routeParams;
+            this.$scope = $scope;
+            this.$http = $http;
+            this.data = {};
+            this.directory = null;
+        }
+
+        $onInit() {
+            if (this.$routeParams.requestId) {
+                this.$http.get('/requests/' + this.$routeParams.requestId).then((response) => this.data = response.data);
+                socket.on(this.$routeParams.requestId, (data) => {
+                    this.$scope.$apply(() => this.onRequestUpdate(data));
+                });
+            }
+        }
+
+        $onDestroy() {
+            socket.off(this.$routeParams.requestId);
+        }
+
+        onRequestUpdate(data) {
+            if (data.directory) {
+                this.directory = data.directory;
+            }
+            if (data.files) {
+                this.data = Object.assign(this.data, {result: data.files});
+            }
+            if (data.status) {
+                this.data = Object.assign(this.data, {status: data.status});
+            }
+        }
+    }
+
+    angular.module('app', ['ngRoute', 'vcRecaptcha'])
+        .config(($routeProvider, $locationProvider, $compileProvider) => {
+            $routeProvider.when('/', {templateUrl: 'index-page.html'});
+            $routeProvider.when('/:requestId', {templateUrl: 'details-page.html'});
+            $routeProvider.otherwise({redirect: '/'});
+            $locationProvider.hashPrefix('');
+            $compileProvider.commentDirectivesEnabled(false);
+            $compileProvider.cssClassDirectivesEnabled(false);
+        })
+        .controller('appIndexCtrl', IndexController)
+        .component('appIndex', {controller: 'appIndexCtrl', templateUrl: 'index.html'})
+        .controller('appDetailsCtrl', DetailsController)
+        .component('appDetails', {controller: 'appDetailsCtrl', templateUrl: 'details.html'})
+        .factory('socket', (socketFactory) => socketFactory({ioSocket: io.connect('/')}));
+    angular.bootstrap(document, ['app']);
+</script>
+</body>
+</html>

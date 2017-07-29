@@ -1,0 +1,22 @@
+{
+  "name": "filesearch",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.17.2",
+    "express": "^4.15.3",
+    "glob": "^7.1.2",
+    "glob-fs": "^0.1.7",
+    "morgan": "^1.8.2",
+    "recaptcha2": "^1.3.2",
+    "socket.io": "^2.0.3",
+    "uuid": "^3.1.0"
+  }
+}
