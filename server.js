@@ -15,7 +15,7 @@ recaptcha = new reCAPTCHA({
     secretKey: '6Lc7-CoUAAAAADwzgCJkqT9o1Nb6KA75RWeiNBh5'
 });
 
-server.listen(80);
+server.listen(8000);
 app.use(morgan('combined'));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
